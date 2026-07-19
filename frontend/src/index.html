@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Student Grade Tracker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f4f8;
+      color: #333;
+      padding: 2rem;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 2rem;
+      color: #2c3e50;
+      font-size: 2rem;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    h2 {
+      margin-bottom: 1rem;
+      color: #34495e;
+      font-size: 1.2rem;
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 0.5rem;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    input, select {
+      flex: 1;
+      min-width: 160px;
+      padding: 0.6rem 0.9rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+
+    button {
+      padding: 0.6rem 1.4rem;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      transition: background 0.2s;
+    }
+
+    button:hover { background: #2980b9; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+    }
+
+    th {
+      background: #3498db;
+      color: white;
+      padding: 0.75rem;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+
+    td {
+      padding: 0.7rem;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 0.9rem;
+    }
+
+    tr:hover { background: #f8f9fa; }
+
+    .grade-badge {
+      display: inline-block;
+      padding: 0.2rem 0.7rem;
+      border-radius: 12px;
+      font-weight: bold;
+      font-size: 0.85rem;
+    }
+
+    .grade-A { background: #d4edda; color: #155724; }
+    .grade-B { background: #cce5ff; color: #004085; }
+    .grade-C { background: #fff3cd; color: #856404; }
+    .grade-D { background: #f8d7da; color: #721c24; }
+    .grade-F { background: #f5c6cb; color: #491217; }
+
+    .status {
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      margin-top: 0.5rem;
+      display: none;
+      font-size: 0.9rem;
+    }
+
+    .status.success { background: #d4edda; color: #155724; display: block; }
+    .status.error   { background: #f8d7da; color: #721c24; display: block; }
+
+    .stats {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
+    }
+
+    .stat-box {
+      flex: 1;
+      min-width: 120px;
+      background: #f0f4f8;
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .stat-box .value {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #3498db;
+    }
+
+    .stat-box .label {
+      font-size: 0.8rem;
+      color: #777;
+      margin-top: 0.25rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎓 Student Grade Tracker</h1>
+
+    <!-- Add Student -->
+    <div class="card">
+      <h2>Add Student</h2>
+      <div class="form-row">
+        <input type="text" id="studentName" placeholder="Full name" />
+        <input type="email" id="studentEmail" placeholder="Email address" />
+        <button onclick="addStudent()">Add Student</button>
+      </div>
+      <div id="studentStatus" class="status"></div>
+    </div>
+
+    <!-- Add Grade -->
+    <div class="card">
+      <h2>Record Grade</h2>
+      <div class="form-row">
+        <select id="gradeStudent">
+          <option value="">Select student</option>
+        </select>
+        <input type="text" id="subject" placeholder="Subject" />
+        <input type="number" id="score" placeholder="Score (0–100)" min="0" max="100" />
+        <button onclick="addGrade()">Record Grade</button>
+      </div>
+      <div id="gradeStatus" class="status"></div>
+    </div>
+
+    <!-- Statistics -->
+    <div class="card">
+      <h2>Class Statistics</h2>
+      <div class="stats" id="stats">
+        <div class="stat-box">
+          <div class="value" id="totalStudents">0</div>
+          <div class="label">Students</div>
+        </div>
+        <div class="stat-box">
+          <div class="value" id="totalGrades">0</div>
+          <div class="label">Grades Recorded</div>
+        </div>
+        <div class="stat-box">
+          <div class="value" id="classAverage">—</div>
+          <div class="label">Class Average</div>
+        </div>
+        <div class="stat-box">
+          <div class="value" id="topScore">—</div>
+          <div class="label">Top Score</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grades Table -->
+    <div class="card">
+      <h2>All Grades</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Subject</th>
+            <th>Score</th>
+            <th>Grade</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody id="gradesTable">
+          <tr><td colspan="5" style="text-align:center;color:#999;">
+            No grades recorded yet
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const API = '/api';
+
+    function getLetterGrade(score) {
+      if (score >= 90) return 'A';
+      if (score >= 80) return 'B';
+      if (score >= 70) return 'C';
+      if (score >= 60) return 'D';
+      return 'F';
+    }
+
+    function showStatus(id, message, type) {
+      const el = document.getElementById(id);
+      el.textContent = message;
+      el.className = `status ${type}`;
+      setTimeout(() => { el.className = 'status'; }, 3000);
+    }
+
+    async function loadStudents() {
+      try {
+        const res = await fetch(`${API}/students`);
+        const students = await res.json();
+        const select = document.getElementById('gradeStudent');
+        select.innerHTML = '<option value="">Select student</option>';
+        students.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.id;
+          opt.textContent = s.name;
+          select.appendChild(opt);
+        });
+        document.getElementById('totalStudents').textContent = students.length;
+      } catch (e) {
+        console.error('Failed to load students', e);
+      }
+    }
+
+    async function loadGrades() {
+      try {
+        const res = await fetch(`${API}/grades`);
+        const grades = await res.json();
+        const tbody = document.getElementById('gradesTable');
+
+        if (grades.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" ' +
+            'style="text-align:center;color:#999;">No grades recorded yet</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = grades.map(g => {
+          const letter = getLetterGrade(g.score);
+          const date = new Date(g.created_at).toLocaleDateString();
+          return `<tr>
+            <td>${g.student_name}</td>
+            <td>${g.subject}</td>
+            <td>${g.score}</td>
+            <td><span class="grade-badge grade-${letter}">${letter}</span></td>
+            <td>${date}</td>
+          </tr>`;
+        }).join('');
+
+        document.getElementById('totalGrades').textContent = grades.length;
+        const avg = grades.reduce((s, g) => s + g.score, 0) / grades.length;
+        document.getElementById('classAverage').textContent = avg.toFixed(1);
+        document.getElementById('topScore').textContent =
+          Math.max(...grades.map(g => g.score));
+      } catch (e) {
+        console.error('Failed to load grades', e);
+      }
+    }
+
+    async function addStudent() {
+      const name  = document.getElementById('studentName').value.trim();
+      const email = document.getElementById('studentEmail').value.trim();
+      if (!name || !email) {
+        showStatus('studentStatus', 'Please enter both name and email.', 'error');
+        return;
+      }
+      try {
+        const res = await fetch(`${API}/students`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email })
+        });
+        if (res.ok) {
+          document.getElementById('studentName').value  = '';
+          document.getElementById('studentEmail').value = '';
+          showStatus('studentStatus', `Student "${name}" added successfully.`, 'success');
+          loadStudents();
+        } else {
+          const err = await res.json();
+          showStatus('studentStatus', err.error || 'Failed to add student.', 'error');
+        }
+      } catch (e) {
+        showStatus('studentStatus', 'Could not connect to the API.', 'error');
+      }
+    }
+
+    async function addGrade() {
+      const studentId = document.getElementById('gradeStudent').value;
+      const subject   = document.getElementById('subject').value.trim();
+      const score     = parseInt(document.getElementById('score').value);
+
+      if (!studentId || !subject || isNaN(score)) {
+        showStatus('gradeStatus', 'Please fill in all fields.', 'error');
+        return;
+      }
+      if (score < 0 || score > 100) {
+        showStatus('gradeStatus', 'Score must be between 0 and 100.', 'error');
+        return;
+      }
+      try {
+        const res = await fetch(`${API}/grades`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ student_id: studentId, subject, score })
+        });
+        if (res.ok) {
+          document.getElementById('subject').value = '';
+          document.getElementById('score').value   = '';
+          showStatus('gradeStatus', 'Grade recorded successfully.', 'success');
+          loadGrades();
+        } else {
+          const err = await res.json();
+          showStatus('gradeStatus', err.error || 'Failed to record grade.', 'error');
+        }
+      } catch (e) {
+        showStatus('gradeStatus', 'Could not connect to the API.', 'error');
+      }
+    }
+
+    // Initial load
+    loadStudents();
+    loadGrades();
+
+    // Auto-refresh every 30 seconds
+    setInterval(() => { loadStudents(); loadGrades(); }, 30000);
+  </script>
+</body>
+</html>
