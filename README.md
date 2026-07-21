@@ -102,11 +102,11 @@ trivy image --severity HIGH,CRITICAL grade-tracker-frontend:0.1.0
 ```bash
 docker login
 
-docker tag grade-tracker-backend:0.1.0  <dockerhub-user>/grade-tracker-backend:0.1.0
-docker tag grade-tracker-frontend:0.1.0 <dockerhub-user>/grade-tracker-frontend:0.1.0
+docker tag grade-tracker-backend:0.1.0  hub.docker.com/repository/docker/abdirahmankhalif/grade-tracker-backend:0.1.0
+docker tag grade-tracker-frontend:0.1.0 hub.docker.com/repository/docker/abdirahmankhalif/grade-tracker-frontend:0.1.0
 
-docker push <dockerhub-user>/grade-tracker-backend:0.1.0
-docker push <dockerhub-user>/grade-tracker-frontend:0.1.0
+docker push hub.docker.com/repository/docker/abdirahmankhalif/grade-tracker-backend:0.1.0
+docker push hub.docker.com/repository/docker/abdirahmankhalif/grade-tracker-frontend:0.1.0
 ```
 
 ## Troubleshooting
@@ -133,4 +133,4 @@ docker compose up --build
 
 ## Author
 
-Abdirahman Maalimf — Independent Docker & Docker Compose Project
+Abdirahman Maalim — Independent Docker & Docker Compose Project
