@@ -2,7 +2,7 @@
 
 A containerised 3-tier web application for recording students and their grades, built with Nginx, Node.js/Express, and PostgreSQL, orchestrated with Docker Compose.
 
-## Architecture# student-grade-tracker
+## Architecture#
 
 The browser only ever talks to the `frontend` container. Nginx reverse-proxies any request under `/api/` to the `backend` service by its Compose service name (`backend:3000`), which in turn connects to `db:5432`. Neither `backend` nor `db` publish ports to the host — they're reachable only inside the `grade-tracker-network` Docker network.
 
