@@ -111,18 +111,11 @@ docker push hub.docker.com/repository/docker/abdirahmankhalif/grade-tracker-fron
 
 ## Troubleshooting
 
-| Symptom                                              | Likely cause / fix                                                                       |
-|-----------------------------------------------------------|-----------------------------------------------------------------------------------------------|
-| `frontend` never becomes healthy                          | Check `docker compose logs frontend`; confirm `nginx.conf` was copied in correctly            |
-| Backend keeps restarting / unhealthy                       | Check `docker compose logs backend`; usually a `DB_*`/`POSTGRES_*` mismatch in `.env`          |
-| "relation students does not exist"                         | `init.sql` only runs on a **fresh** volume — run `docker compose down -v` then `up` again      |
-| Frontend loads but API calls fail (network tab)            | Confirm backend is healthy and `grade-tracker-network` exists (`docker network ls`)            |
-| App shows 0 students/grades after a restart                | Usually a stale page load during a brief reconnect window — refresh the browser; verify with `docker compose exec db psql -U <user> -d <db> -c "SELECT * FROM students;"` |
-| Data disappears after `docker compose down`                | You likely used `-v`, which deletes the named volume — omit `-v` to keep data                 |
-| Port 8080 already in use                                    | Change the host-side port mapping in `docker-compose.yml` (e.g. `"8081:8080"`)                 |
-| `docker: command not found` in a new terminal               | You're on the host machine, not inside the VM — run `multipass shell <vm-name>` first          |
-| `no configuration file provided: not found`                | You're not in the project root — `cd` into the folder containing `docker-compose.yml`          |
-| Healthcheck fails with `wget: can't connect ([::1]:PORT)`  | IPv6 loopback issue — use `127.0.0.1` instead of `localhost` in Dockerfile/Compose healthchecks |
+| Symptom                                          | Likely cause / fix                                                                 |
+|-----------------------------------------------------|------------------------------------------------------------------------------------|
+| Backend image builds but has no `HEALTHCHECK`, no non-root user, no app code | The Dockerfile only had Stage 1 (`deps`) written when `docker build` ran — Stage 2 (`runtime`) was added to the file *after* the build. Confirm both stages exist with `cat Dockerfile` (look for two `FROM` lines), then rebuild with `docker build -t <image>:<tag> .` — Docker will re-run every instruction now present in the file. |
+| Backend fails to authenticate against Postgres / crash-loops even though `.env` "looks right" | `.env` had **duplicate variable definitions** (e.g. a leftover placeholder block below the real one) — in a `.env` file, the *last* definition of a variable wins, so `DB_HOST=database` or `DB_PASSWORD=your_secure_password` silently overrode the correct values set earlier in the same file. Run `cat .env` and check for the same variable name appearing more than once; delete the duplicate block and re-run `docker compose config` to confirm the resolved values are correct before starting the stack. |
+| Frontend briefly shows `0` students / `0` grades right after `docker compose restart db` | The page happened to load (or auto-refresh) during the few seconds `db` was restarting, so the `fetch()` calls in `index.html` failed silently and fell back to their default `0`/`—` placeholders. This is a transient UI read, not data loss — confirm the real state directly against Postgres: `docker compose exec db psql -U <user> -d <db> -c "SELECT * FROM students;"`, then refresh the browser once `docker compose ps` shows `db` and `backend` both `(healthy)` again. |
 
 ## Clean Rebuild (From Scratch)
 
