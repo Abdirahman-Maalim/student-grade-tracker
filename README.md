@@ -25,7 +25,7 @@ Full design rationale: [docs/architecture.md](docs/architecture.md)
 ## Quick Start
 
 ```bash
-git clone https://github.com/<your-username>/student-grade-tracker.git
+git clone https://github.com/Abdirahman-Maalim/student-grade-tracker.git
 cd student-grade-tracker
 
 # Create your local environment file
