@@ -1,0 +1,17 @@
+# IMPORTANT: Since the frontend Docker image already contains a built-in nginx.conf with "proxy_pass http://backend:3000/api/;" hardcoded from the Docker Compose project,
+# # and that Kubernetes's DNS resolves Services by their metadata.name,
+#  and that the names must match exactly, the service's name is "backend" (not "backend-service").
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: grade-tracker
+  labels:
+    app: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: backend
+  ports:
+    - port: 3000
+      targetPort: 3000   

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: grade-tracker
+  labels:
+    app: student-grade-tracker
+    environment: production

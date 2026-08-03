@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: backend-replicaset-exercise
+  namespace: grade-tracker
+  labels:
+    app: backend
+    exercise: replicaset
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+      exercise: replicaset
+  template:
+    metadata:
+      labels:
+        app: backend
+        exercise: replicaset
+    spec:
+      containers:
+        - name: backend
+          image: abdirahmankhalif/grade-tracker-backend:0.1.0
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: grade-tracker-config
+          env:
+            - name: DB_PASSWORD
+              value: "qoslaaye"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
