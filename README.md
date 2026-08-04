@@ -1,6 +1,8 @@
 # Student Grade Tracker
 
-A containerised 3-tier web application for recording students and their grades, built with Nginx, Node.js/Express, and PostgreSQL, orchestrated with Docker Compose.
+A containerised 3-tier web application for recording students and their grades, built with Nginx, Node.js/Express, and PostgreSQL, orchestrated with Docker Compose and then a Kubernetes deployment, reusing the
+same Docker Hub images built during the Docker Compose phase - no
+application code changes were needed.
 
 ## Architecture#
 
@@ -123,7 +125,110 @@ docker push hub.docker.com/repository/docker/abdirahmankhalif/grade-tracker-fron
 docker compose down -v
 docker compose up --build
 ```
+---
+
+## Kubernetes Deployment
+
+This project also ships as a Kubernetes deployment (`k8s/`), reusing the
+same Docker Hub images built during the Docker Compose phase - no
+application code changes were needed.
+
+### Kubernetes Resources
+
+| Kind | Name | Purpose |
+|---|---|---|
+| Namespace | `grade-tracker` | Isolates all resources for this app |
+| ConfigMap | `grade-tracker-config` | Non-sensitive app config (DB host/port/name/user, API port) |
+| ConfigMap | `postgres-initdb` | Holds `init.sql` content, mounted into Postgres on first start |
+| PersistentVolume | `grade-tracker-postgres-pv` | 2Gi hostPath storage for the database |
+| PersistentVolumeClaim | `grade-tracker-postgres-pvc` | 1Gi claim bound to the PV above |
+| StatefulSet | `postgres` | Single-replica PostgreSQL 15 instance |
+| Service (Headless) | `postgres-headless` | Stable per-Pod DNS for the StatefulSet |
+| Service (ClusterIP) | `postgres-service` | Internal DB endpoint used by the backend |
+| Deployment | `backend-deployment` | 2 replicas of the Express API |
+| Service (ClusterIP) | `backend` | Internal API endpoint (name required by the frontend's built-in nginx proxy) |
+| Deployment | `frontend-deployment` | 2 replicas of the Nginx-served UI |
+| Service (NodePort) | `frontend-service` | External access on port 30090 |
+
+### Prerequisites
+
+- Minikube
+- kubectl
+- Docker (for Minikube's driver)
+
+### Deployment Order
+
+```bash
+cd k8s
+kubectl apply -f namespace.yaml
+kubectl apply -f configmap.yaml
+kubectl apply -f persistentvolume.yaml
+kubectl apply -f persistentvolumeclaim.yaml
+kubectl apply -f postgres-headless-service.yaml
+kubectl apply -f postgres-service.yaml
+kubectl apply -f postgres-statefulset.yaml
+kubectl apply -f backend-service.yaml
+kubectl apply -f backend-deployment.yaml
+kubectl apply -f frontend-service.yaml
+kubectl apply -f frontend-deployment.yaml
+```
+
+Full step-by-step reasoning for this order, plus the ReplicaSet exercise
+(applied and deleted separately, before the backend Deployment), is in
+[docs/architecture.md](docs/architecture.md).
+
+### Accessing the Application
+
+```bash
+minikube service frontend-service -n grade-tracker --url
+```
+
+Open the printed URL in your browser.
+
+### Verifying Everything Is Healthy
+
+```bash
+kubectl get all -n grade-tracker
+kubectl get pv,pvc -n grade-tracker
+kubectl get endpoints -n grade-tracker
+```
+
+All Pods should show `Running`, the PVC should show `Bound`, and every
+Service should have real Pod IPs listed under its endpoints (not `<none>`).
+
+### Verifying Data Persistence
+
+```bash
+kubectl delete pod postgres-0 -n grade-tracker
+kubectl get pods -n grade-tracker -w
+```
+
+Reload the app once `postgres-0` is `Running` again - previously added
+students and grades should still be present, since they live in the PVC,
+not the Pod.
+
+### Cleaning Up
+
+```bash
+kubectl delete namespace grade-tracker
+```
+
+Deletes every resource created in this section in one command. The
+PersistentVolume itself (`grade-tracker-postgres-pv`) is cluster-scoped,
+not namespaced, so it survives this and would need
+`kubectl delete pv grade-tracker-postgres-pv` separately if you want to
+remove it too - its `Retain` reclaim policy means the underlying data on
+disk is preserved either way.
+
+### Kubernetes-Specific Troubleshooting
+
+| Symptom | Likely cause / fix |
+|---|---|
+| StatefulSet rejected with `spec.updateStrategy: Invalid value` | StatefulSets only accept `RollingUpdate` or `OnDelete` for `updateStrategy.type` - `Recreate` (valid on Deployments) is not valid here. |
+| Pod stuck in `ImagePullBackOff` with "no space left on device" in `kubectl describe pod` | Minikube's internal disk is full. Run `minikube ssh -- docker system prune -a -f`, and if that's insufficient, resize the underlying VM's disk and restart Minikube. |
+| `kubectl` suddenly returns "no route to host" on port 8443 | Minikube's internal cluster stopped (often after the host VM was stopped/restarted) and needs to be brought back up explicitly with `minikube start` - it does not restart automatically with the host. |
+| Frontend loads but API calls fail | Confirm the backend Service is named exactly `backend` - the frontend's built-in `nginx.conf` has this hostname hardcoded and cannot be changed without rebuilding the image. |
 
 ## Author
 
-Abdirahman Maalim — Independent Docker & Docker Compose Project
+Abdirahman Maalim (https://github.com/Abdirahman-Maalim/student-grade-tracker)  — Independent Docker,  Docker Compose and Kubernetes deployment Project
