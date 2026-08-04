@@ -148,7 +148,7 @@ application code changes were needed.
 | Deployment | `backend-deployment` | 2 replicas of the Express API |
 | Service (ClusterIP) | `backend` | Internal API endpoint (name required by the frontend's built-in nginx proxy) |
 | Deployment | `frontend-deployment` | 2 replicas of the Nginx-served UI |
-| Service (NodePort) | `frontend-service` | External access on port 30090 |
+| Service (NodePort) | `frontend-service` | External access on port 30010 |
 
 ### Prerequisites
 
