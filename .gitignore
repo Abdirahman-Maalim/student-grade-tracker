@@ -11,3 +11,7 @@ node_modules/
 .DS_Store
 .idea/
 .vscode/
+
+# CI outputs
+reports/
+dist/
