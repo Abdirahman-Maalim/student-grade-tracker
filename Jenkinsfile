@@ -135,7 +135,8 @@ pipeline {
                     echo "build=${BUILD_NUMBER}"  >> dist/build-info.txt
                     echo "image_tag=${IMAGE_TAG}" >> dist/build-info.txt
                     tar -czf dist/grade-tracker-${IMAGE_TAG}.tar.gz \
-                        frontend backend/src backend/package.json k8s argocd
+                        frontend backend/src backend/package.json k8s \
+                        $(test -d argocd && echo argocd)
                 '''
                 archiveArtifacts artifacts: 'dist/**, reports/**', fingerprint: true
             }
@@ -144,7 +145,7 @@ pipeline {
 
     post {
         success { echo "CI passed for ${env.SHORT_SHA}" }
-        failure { echo "CI failed for ${env.SHORT_SHA} - check the Test stage / JUnit report" }
+        failure { echo "CI failed for ${env.SHORT_SHA} - see the red stage above" }
         always  { sh 'docker image prune -f >/dev/null 2>&1 || true' }
     }
 }
