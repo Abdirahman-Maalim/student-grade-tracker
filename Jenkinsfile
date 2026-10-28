@@ -135,7 +135,7 @@ pipeline {
             when { environment name: 'SKIP_BUILD', value: 'false' }
             steps {
                 sh '''
-                    mkdir -p dist
+                    rm -rf dist && mkdir -p dist
                     echo "commit=${SHORT_SHA}"    >  dist/build-info.txt
                     echo "build=${BUILD_NUMBER}"  >> dist/build-info.txt
                     echo "image_tag=${IMAGE_TAG}" >> dist/build-info.txt
