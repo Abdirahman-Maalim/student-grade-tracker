@@ -39,6 +39,8 @@ pipeline {
                     // Stop the loop: the tag-bump commit made by this pipeline must not rebuild itself.
                     def lastMsg = sh(script: 'git log -1 --pretty=%B', returnStdout: true).trim()
                     env.SKIP_BUILD = lastMsg.contains('[skip ci]') ? 'true' : 'false'
+                                        env.COMMIT_MSG    = lastMsg
+                    env.COMMIT_AUTHOR = sh(script: 'git log -1 --pretty=%an', returnStdout: true).trim()
                 }
                 echo "Commit ${env.SHORT_SHA} -> image tag ${env.IMAGE_TAG}"
             }
@@ -148,9 +150,34 @@ pipeline {
         }
     }
 
-    post {
+        post {
         success { echo "CI passed for ${env.SHORT_SHA}" }
         failure { echo "CI failed for ${env.SHORT_SHA} - see the red stage above" }
-        always  { sh 'docker image prune -f >/dev/null 2>&1 || true' }
+        always {
+            sh 'docker image prune -f >/dev/null 2>&1 || true'
+            script {
+                if (!env.NOTIFY_EMAIL) {
+                    echo 'NOTIFY_EMAIL not set in Jenkins - skipping email'
+                    return
+                }
+                def result = currentBuild.currentResult
+                try {
+                    mail(
+                        to: env.NOTIFY_EMAIL,
+                        subject: "[${result}] ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${env.SHORT_SHA}",
+                        body: """Build result : ${result}
+Job          : ${env.JOB_NAME} #${env.BUILD_NUMBER}
+Commit       : ${env.SHORT_SHA} by ${env.COMMIT_AUTHOR}
+Message      : ${env.COMMIT_MSG}
+Duration     : ${currentBuild.durationString}
+
+Console : ${env.BUILD_URL}console
+Tests   : ${env.BUILD_URL}testReport/
+"""
+                    )
+                } catch (err) {
+                    echo "Email not sent: ${err}"
+                }
+            }
+        }
     }
-}
