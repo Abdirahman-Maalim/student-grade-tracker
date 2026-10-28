@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: student-grade-tracker
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Abdirahman-Maalim/student-grade-tracker.git
+    targetRevision: main
+    path: k8s
+    directory:
+      # Lab-only ReplicaSet: its pods carry app=backend and would receive
+      # traffic from the backend Service, so should be kept out of the deployment.
+      exclude: 'replicaset-exercise.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: grade-tracker
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
