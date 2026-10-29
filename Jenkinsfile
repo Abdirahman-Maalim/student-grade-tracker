@@ -40,7 +40,7 @@ pipeline {
                     def lastMsg = sh(script: 'git log -1 --pretty=%B', returnStdout: true).trim()
                     env.SKIP_BUILD = lastMsg.contains('[skip ci]') ? 'true' : 'false'
                                         env.COMMIT_MSG    = lastMsg
-                    env.COMMIT_AUTHOR = sh(script: 'git log -1 --pretty=%an', returnStdout: true).trim()
+                env.COMMIT_AUTHOR = sh(script: 'git log -1 --pretty=%an', returnStdout: true).trim()
                 }
                 echo "Commit ${env.SHORT_SHA} -> image tag ${env.IMAGE_TAG}"
             }
