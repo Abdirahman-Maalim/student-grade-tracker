@@ -12,7 +12,7 @@ spec:
     directory:
       # Lab-only ReplicaSet: its pods carry app=backend and would receive
       # traffic from the backend Service, so should be kept out of the deployment.
-      exclude: 'replicaset-exercise.yaml'
+      exclude: '{replicaset-exercise.yaml,kustomization.yaml}'
   destination:
     server: https://kubernetes.default.svc
     namespace: grade-tracker

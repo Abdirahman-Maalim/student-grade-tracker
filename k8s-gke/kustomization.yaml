@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../k8s
+
+patches:
+  - target:
+      kind: PersistentVolumeClaim
+      name: grade-tracker-postgres-pvc
+    patch: |-
+      - op: replace
+        path: /spec/storageClassName
+        value: standard-rwo
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: 10Gi
+
+  - target:
+      kind: Service
+      name: frontend-service
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: LoadBalancer
+      - op: remove
+        path: /spec/ports/0/nodePort
