@@ -21,3 +21,4 @@ dist/
 *.tfstate.*
 *.tfvars
 crash.log
+ansible/inventory.ini
