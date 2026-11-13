@@ -24,3 +24,13 @@ patches:
         value: LoadBalancer
       - op: remove
         path: /spec/ports/0/nodePort
+
+# Images for GKE come from Artifact Registry. The base (k8s/) keeps the
+# Docker Hub names for Minikube; Jenkins updates newTag on every build.
+images:
+  - name: abdirahmankhalif/grade-tracker-backend
+    newName: us-central1-docker.pkg.dev/project-aa2f0371-cdbf-4df1-8c0/grade-tracker/backend
+    newTag: set-by-jenkins
+  - name: abdirahmankhalif/grade-tracker-frontend
+    newName: us-central1-docker.pkg.dev/project-aa2f0371-cdbf-4df1-8c0/grade-tracker/frontend
+    newTag: set-by-jenkins

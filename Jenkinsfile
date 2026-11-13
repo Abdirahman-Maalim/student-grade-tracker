@@ -1,24 +1,37 @@
 // Jenkinsfile — CI for Student Grade Tracker
+//
+// Jenkins (GCE VM) -> Artifact Registry -> Git commit -> ArgoCD on GKE
+//
+// Every push to main: Checkout -> Install -> Test -> Docker Build -> Push
+//                     -> Update k8s-gke/ (GitOps commit) -> Archive
+//
+// Jenkins never talks to the cluster. It pushes images and commits the new tag
+// to k8s-gke/kustomization.yaml; ArgoCD watches that overlay and deploys it.
+//
+// Prerequisites (terraform/jenkins + ansible/jenkins.yml):
+//   - node, npm, git, docker on the VM; jenkins user in the docker group
+//   - VM service account with artifactregistry.writer on the repository;
+//     docker authenticates through the gcloud credential helper (no password)
+//   - Jenkins credential github-creds: Username/Password =
+//     GitHub user + fine-grained PAT (this repo only, Contents: read/write)
 
 pipeline {
     agent any
 
     parameters {
-        booleanParam(name: 'BUILD_IMAGES', defaultValue: false,
-            description: 'Build backend + frontend Docker images (needs docker on the agent)')
-        booleanParam(name: 'PUBLISH', defaultValue: false,
-            description: 'Push images to Docker Hub and commit the new tags to k8s/ so ArgoCD deploys them (implies BUILD_IMAGES)')
+        booleanParam(name: 'PUBLISH', defaultValue: true,
+            description: 'Build and push images to Artifact Registry and commit the new tag to k8s-gke/ (untick for a test-only run)')
     }
 
     environment {
-        REGISTRY_USER   = 'abdirahmankhalif'
-        BACKEND_IMAGE   = "${REGISTRY_USER}/grade-tracker-backend"
-        FRONTEND_IMAGE  = "${REGISTRY_USER}/grade-tracker-frontend"
+        REGISTRY        = 'us-central1-docker.pkg.dev/project-aa2f0371-cdbf-4df1-8c0/grade-tracker'
+        BACKEND_IMAGE   = "${REGISTRY}/backend"
+        FRONTEND_IMAGE  = "${REGISTRY}/frontend"
+        OVERLAY         = 'k8s-gke/kustomization.yaml'
         GIT_BRANCH_NAME = 'main'
     }
 
     options {
-        
         timestamps()
         disableConcurrentBuilds()
         buildDiscarder(logRotator(numToKeepStr: '20'))
@@ -26,7 +39,8 @@ pipeline {
     }
 
     triggers {
-        pollSCM('H/2 * * * *')
+        // GitHub webhook -> http://<jenkins>:8080/github-webhook/ (replaces polling)
+        githubPush()
     }
 
     stages {
@@ -38,9 +52,9 @@ pipeline {
                     env.IMAGE_TAG = "1.0.${env.BUILD_NUMBER}-${env.SHORT_SHA}"
                     // Stop the loop: the tag-bump commit made by this pipeline must not rebuild itself.
                     def lastMsg = sh(script: 'git log -1 --pretty=%B', returnStdout: true).trim()
-                    env.SKIP_BUILD = lastMsg.contains('[skip ci]') ? 'true' : 'false'
-                                        env.COMMIT_MSG    = lastMsg
-                env.COMMIT_AUTHOR = sh(script: 'git log -1 --pretty=%an', returnStdout: true).trim()
+                    env.SKIP_BUILD    = lastMsg.contains('[skip ci]') ? 'true' : 'false'
+                    env.COMMIT_MSG    = lastMsg
+                    env.COMMIT_AUTHOR = sh(script: 'git log -1 --pretty=%an', returnStdout: true).trim()
                 }
                 echo "Commit ${env.SHORT_SHA} -> image tag ${env.IMAGE_TAG}"
             }
@@ -74,14 +88,13 @@ pipeline {
             when {
                 allOf {
                     environment name: 'SKIP_BUILD', value: 'false'
-                    anyOf { expression { params.BUILD_IMAGES }; expression { params.PUBLISH } }
+                    expression { params.PUBLISH }
                 }
             }
             steps {
                 sh '''
                     docker build -t ${BACKEND_IMAGE}:${IMAGE_TAG}  backend
                     docker build -t ${FRONTEND_IMAGE}:${IMAGE_TAG} frontend
-                    docker image ls | grep grade-tracker
                 '''
             }
         }
@@ -94,15 +107,12 @@ pipeline {
                 }
             }
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'DH_USER', passwordVariable: 'DH_TOKEN')]) {
-                    sh '''
-                        echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
-                        docker push ${BACKEND_IMAGE}:${IMAGE_TAG}
-                        docker push ${FRONTEND_IMAGE}:${IMAGE_TAG}
-                        docker logout
-                    '''
-                }
+                // No stored password: docker uses the gcloud credential helper,
+                // which signs in as the VM's service account.
+                sh '''
+                    docker push ${BACKEND_IMAGE}:${IMAGE_TAG}
+                    docker push ${FRONTEND_IMAGE}:${IMAGE_TAG}
+                '''
             }
         }
 
@@ -117,14 +127,18 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'github-creds',
                         usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
                     sh '''
-                        sed -i -E "s#(image: ${BACKEND_IMAGE}):.*#\\1:${IMAGE_TAG}#"  k8s/backend-deployment.yaml
-                        sed -i -E "s#(image: ${FRONTEND_IMAGE}):.*#\\1:${IMAGE_TAG}#" k8s/frontend-deployment.yaml
+                        # Both images share one tag, so every newTag line in the overlay gets it.
+                        sed -i -E "s#^( *newTag:).*#\\1 ${IMAGE_TAG}#" ${OVERLAY}
                         git diff --stat
 
                         git config user.name  "jenkins-ci"
                         git config user.email "jenkins-ci@users.noreply.github.com"
-                        git add k8s/backend-deployment.yaml k8s/frontend-deployment.yaml
-                        git commit -m "ci: deploy images ${IMAGE_TAG} [skip ci]"
+                        git add ${OVERLAY}
+                        git commit -m "ci: deploy ${IMAGE_TAG} to GKE [skip ci]"
+
+                        # main may have moved while we built; replay our one commit on top.
+                        git fetch origin ${GIT_BRANCH_NAME}
+                        git rebase origin/${GIT_BRANCH_NAME}
 
                         REPO_URL=$(git config --get remote.origin.url | sed -E 's#https://##')
                         git push "https://${GH_USER}:${GH_TOKEN}@${REPO_URL}" HEAD:${GIT_BRANCH_NAME}
@@ -138,11 +152,13 @@ pipeline {
             steps {
                 sh '''
                     rm -rf dist && mkdir -p dist
-                    echo "commit=${SHORT_SHA}"    >  dist/build-info.txt
-                    echo "build=${BUILD_NUMBER}"  >> dist/build-info.txt
-                    echo "image_tag=${IMAGE_TAG}" >> dist/build-info.txt
+                    echo "commit=${SHORT_SHA}"                     >  dist/build-info.txt
+                    echo "build=${BUILD_NUMBER}"                   >> dist/build-info.txt
+                    echo "image_tag=${IMAGE_TAG}"                  >> dist/build-info.txt
+                    echo "backend=${BACKEND_IMAGE}:${IMAGE_TAG}"   >> dist/build-info.txt
+                    echo "frontend=${FRONTEND_IMAGE}:${IMAGE_TAG}" >> dist/build-info.txt
                     tar -czf dist/grade-tracker-${IMAGE_TAG}.tar.gz \
-                        frontend backend/src backend/package.json k8s \
+                        frontend backend/src backend/package.json k8s k8s-gke \
                         $(test -d argocd && echo argocd)
                 '''
                 archiveArtifacts artifacts: 'dist/**, reports/**', fingerprint: true
@@ -150,11 +166,15 @@ pipeline {
         }
     }
 
-        post {
+    post {
         success { echo "CI passed for ${env.SHORT_SHA}" }
         failure { echo "CI failed for ${env.SHORT_SHA} - see the red stage above" }
         always {
-            sh 'docker image prune -f >/dev/null 2>&1 || true'
+            // Images live in Artifact Registry; keep the VM's 30 GB disk clean.
+            sh '''
+                docker image rm ${BACKEND_IMAGE}:${IMAGE_TAG} ${FRONTEND_IMAGE}:${IMAGE_TAG} >/dev/null 2>&1 || true
+                docker image prune -f >/dev/null 2>&1 || true
+            '''
             script {
                 if (!env.NOTIFY_EMAIL) {
                     echo 'NOTIFY_EMAIL not set in Jenkins - skipping email'
@@ -169,6 +189,7 @@ pipeline {
 Job          : ${env.JOB_NAME} #${env.BUILD_NUMBER}
 Commit       : ${env.SHORT_SHA} by ${env.COMMIT_AUTHOR}
 Message      : ${env.COMMIT_MSG}
+Image tag    : ${env.IMAGE_TAG}
 Duration     : ${currentBuild.durationString}
 
 Console : ${env.BUILD_URL}console
