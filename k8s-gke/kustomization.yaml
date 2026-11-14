@@ -30,7 +30,7 @@ patches:
 images:
   - name: abdirahmankhalif/grade-tracker-backend
     newName: us-central1-docker.pkg.dev/project-aa2f0371-cdbf-4df1-8c0/grade-tracker/backend
-    newTag: 1.0.5-36f251e
+    newTag: 1.0.7-dba85a8
   - name: abdirahmankhalif/grade-tracker-frontend
     newName: us-central1-docker.pkg.dev/project-aa2f0371-cdbf-4df1-8c0/grade-tracker/frontend
-    newTag: 1.0.5-36f251e
+    newTag: 1.0.7-dba85a8
