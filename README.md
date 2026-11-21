@@ -1,7 +1,7 @@
 # Student Grade Tracker
 
 A containerised 3-tier web application for recording students and their grades, built with
-Nginx, Node.js/Express and PostgreSQL. The project grew in three phases, reusing the same
+Nginx, Node.js/Express and PostgreSQL. The project grew in four phases, reusing the same
 application and images throughout:
 
 | Phase | What it covers |
@@ -9,6 +9,7 @@ application and images throughout:
 | 1. [Docker Compose](#quick-start) | Multi-stage images, Compose stack, health checks, Trivy scans |
 | 2. [Kubernetes](#kubernetes-deployment) | Namespace, StatefulSet + PV/PVC, Deployments, Services on Minikube |
 | 3. [CI/CD with Jenkins and ArgoCD](#cicd-with-jenkins-and-argocd) | Tested pipeline, GitOps deployment, rollback demo, evidence gallery |
+| 4. [Production on Google Cloud](#production-on-google-cloud-gke) | Terraform, Ansible, Jenkins on Compute Engine, Artifact Registry, ArgoCD on GKE |
 
 
 ## Architecture
@@ -36,9 +37,10 @@ to the backend by its service name (`backend:3000`), and the backend connects to
 `db:5432` in Compose, `postgres-service:5432` in Kubernetes. Neither the backend nor the
 database is reachable from outside its network.
 
-**Delivery path.** Every push is tested by Jenkins. ArgoCD deploys whatever is in `k8s/` on
-`main`, so deploying and rolling back are both Git commits. See
-[CI/CD with Jenkins and ArgoCD](#cicd-with-jenkins-and-argocd).
+**Delivery path.** Every push is tested by Jenkins. On Minikube, ArgoCD deploys `k8s/`; on GKE,
+it deploys the `k8s-gke/` overlay with images from Artifact Registry. Deploying and rolling back
+are both Git commits. See [CI/CD with Jenkins and ArgoCD](#cicd-with-jenkins-and-argocd) and
+[Production on Google Cloud](#production-on-google-cloud-gke).
 
 Full design rationale: [docs/architecture.md](docs/architecture.md)
 
@@ -162,9 +164,8 @@ docker compose up --build
 
 ## Kubernetes Deployment
 
-This project also ships as a Kubernetes deployment (`k8s/`), reusing the
-same Docker Hub images built during the Docker Compose phase - no
-application code changes were needed.
+This project also ships as a Kubernetes deployment (`k8s/`), using the Docker Hub images
+(multi-arch `0.2.0`, amd64 + arm64) - no application code changes were needed.
 
 ### Kubernetes Resources
 
@@ -180,7 +181,7 @@ application code changes were needed.
 | Service (ClusterIP) | `postgres-service` | Internal DB endpoint used by the backend |
 | Deployment | `backend-deployment` | 2 replicas of the Express API |
 | Service (ClusterIP) | `backend` | Internal API endpoint (name required by the frontend's built-in nginx proxy) |
-| Deployment | `frontend-deployment` | 2 replicas of the Nginx-served UI |
+| Deployment | `frontend-deployment` | 3 replicas of the Nginx-served UI |
 | Service (NodePort) | `frontend-service` | External access on port 30090 |
 
 ### Prerequisites
@@ -205,6 +206,8 @@ kubectl apply -f backend-deployment.yaml
 kubectl apply -f frontend-service.yaml
 kubectl apply -f frontend-deployment.yaml
 ```
+`k8s/` also contains a `kustomization.yaml`, so `kubectl apply -k k8s/` deploys the same set in
+one command. It is the base for the GKE overlay in `k8s-gke/`.
 
 Full step-by-step reasoning for this order, plus the ReplicaSet exercise
 (applied and deleted separately, before the backend Deployment), is in
@@ -264,6 +267,9 @@ disk is preserved either way.
 
 
 ## CI/CD with Jenkins and ArgoCD
+
+> Describes the Minikube phase. The Jenkinsfile now targets GKE (Artifact Registry, GitHub webhook,
+> tags committed to `k8s-gke/`); see [Production on Google Cloud](#production-on-google-cloud-gke).
 
 The Kubernetes deployment above started out as manual `kubectl apply` commands. It now runs
 as a Git-driven delivery workflow:
@@ -479,6 +485,84 @@ kubectl -n grade-tracker get rs -l app=frontend \
   Debugging meant checking each layer: app → Kubernetes → ArgoCD → host.
 
 
+## Production on Google Cloud (GKE)
+
+The same app and manifests, deployed to Google Cloud with every component defined in code.
+
+![Architecture on Google Cloud](docs/screenshots/gke/00-architecture.png)
+
+| Layer | Implementation |
+|---|---|
+| Infrastructure | **Terraform**: `bootstrap` (APIs, state bucket), `gke` (VPC, cluster, node SA), `jenkins` (VM, firewall, Artifact Registry); remote state in GCS with locking |
+| Cluster | **GKE** zonal, 3 × e2-medium, VPC-native, Workload Identity, Regular channel |
+| CI server | **Jenkins** on Compute Engine, configured by **Ansible** (idempotent, plugins as code) |
+| Registry | **Artifact Registry**; Jenkins pushes as the VM's service account, no stored password |
+| Manifests | **Kustomize** overlay `k8s-gke/` on the `k8s/` base: Persistent Disk, LoadBalancer, registry images |
+| CD | **ArgoCD** (installed from the official `argo/argo-cd` chart), auto-sync, prune, self-heal; the app itself uses Kustomize, not Helm |
+
+### Delivery flow
+
+`git push` → GitHub webhook → Jenkins: 18 tests → build → push to Artifact Registry → commit new tag to `k8s-gke/` (`[skip ci]`) → ArgoCD syncs → rolling update on GKE.
+
+- Jenkins never touches the cluster; image tags are `1.0.<build>-<commit>`.
+- Release `1.0.5-36f251e` and its `git revert` rollback `1.0.7-dba85a8` both deployed with no manual step.
+
+### Evidence
+
+| | | |
+|:---:|:---:|:---:|
+| <a href="docs/screenshots/gke/01-argocd-release.png"><img src="docs/screenshots/gke/01-argocd-release.png" width="260" alt="ArgoCD release"></a><br><sub>**Release** synced: `1.0.5-36f251e`</sub> | <a href="docs/screenshots/gke/02-argocd-rollback.png"><img src="docs/screenshots/gke/02-argocd-rollback.png" width="260" alt="ArgoCD rollback"></a><br><sub>**Rollback** via `git revert`: `1.0.7-dba85a8`</sub> | <a href="docs/screenshots/gke/03-app-live.png"><img src="docs/screenshots/gke/03-app-live.png" width="260" alt="App live"></a><br><sub>**App** live through the load balancer</sub> |
+| <a href="docs/screenshots/gke/04-kubectl-helm.png"><img src="docs/screenshots/gke/04-kubectl-helm.png" width="260" alt="Cluster state"></a><br><sub>**Cluster state:** nodes, pods, live image, ArgoCD install</sub> | <a href="docs/screenshots/gke/05-gke-workloads.png"><img src="docs/screenshots/gke/05-gke-workloads.png" width="260" alt="GKE workloads"></a><br><sub>**Workloads:** all healthy</sub> | <a href="docs/screenshots/gke/06-vm-instances.png"><img src="docs/screenshots/gke/06-vm-instances.png" width="260" alt="VM instances"></a><br><sub>**Compute:** Jenkins VM + 3 GKE nodes</sub> |
+
+<details>
+<summary><b>Rebuild and teardown</b></summary>
+
+```bash
+# Rebuild
+cd terraform/gke && terraform apply
+$(terraform output -raw get_credentials)
+helm repo add argo https://argoproj.github.io/argo-helm && helm repo update
+helm install argocd argo/argo-cd -n argocd --create-namespace \
+  --version 10.18.0 --set 'configs.params.server\.insecure=true' --wait
+kubectl apply -f argocd/application-gke.yaml
+gcloud compute instances start jenkins --zone us-central1-a
+
+# Teardown (delete the app first so the load balancer and disk are removed)
+kubectl -n argocd delete application student-grade-tracker-gke
+gcloud compute forwarding-rules list          # must be empty
+cd terraform/gke && terraform destroy
+gcloud compute instances stop jenkins --zone us-central1-a
+```
+
+</details>
+
+<details>
+<summary><b>Security</b></summary>
+
+- No registry credentials: least-privilege service accounts for Jenkins and GKE nodes
+- GitHub token scoped to this repository only
+- Firewall: admin access from one IP; port 8080 open only to GitHub webhook ranges
+- ArgoCD UI not exposed; accessed through `port-forward`
+- `*.tfvars`, Terraform state and the Ansible inventory are kept out of Git
+
+</details>
+
+<details>
+<summary><b>Troubleshooting</b></summary>
+
+| Symptom | Fix |
+|---|---|
+| Pods in `ImagePullBackOff` | Images were ARM64, nodes amd64: published multi-arch images; CI now builds on amd64 |
+| Postgres `Pending`: insufficient CPU | Node pool raised from 2 to 3 |
+| Jenkins plugin installs timing out | A download mirror was unreachable from GCP: plugins installed by Ansible from the Jenkins archive |
+| `kubectl` timeouts after rebuild | Re-run `get-credentials`; a new cluster has a new endpoint |
+| Jenkins UI unreachable | Home IP changed: update `admin_cidrs` and `terraform apply` |
+
+</details>
+
+
 ## Author
 
-Abdirahman Maalim (https://github.com/Abdirahman-Maalim/student-grade-tracker)  — Docker, Docker Compose, Kubernetes and CI/CD (Jenkins + ArgoCD) project
+**Abdirahman Maalim** · [GitHub](https://github.com/Abdirahman-Maalim)
+
+Docker, Kubernetes, CI/CD (Jenkins + ArgoCD) and Google Cloud (GKE, Terraform, Ansible) project.
